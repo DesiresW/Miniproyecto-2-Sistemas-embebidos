@@ -47,18 +47,42 @@ También se muestran eventos básicos del sistema, como conexión y desconexión
 
 `systemd/bt-agent-auto.service` inicia un agente Bluetooth automático para facilitar la conexión desde dispositivos externos.
 
-## Requisitos
+
+
+## Requisitos y dependencias
 
 - Raspberry Pi con Bluetooth disponible.
 - Pantalla LCD 16x2 con módulo I2C.
 
-Dependencias principales:
+El proyecto necesita dependencias de sistema en la Raspberry Pi y dependencias de Python. Las primeras permiten usar Bluetooth, BLE, servicios de Linux e I2C; las segundas son las bibliotecas que importa directamente el código.
+
+### Dependencias de la Raspberry Pi
 
 ```bash
 sudo apt update
-sudo apt install python3-pip bluetooth bluez
+sudo apt install python3 python3-pip bluetooth bluez bluez-tools i2c-tools
+```
+
+* `python3`: ejecuta los archivos del proyecto.
+* `python3-pip`: permite instalar bibliotecas de Python.
+* `bluetooth` y `bluez`: habilitan el funcionamiento de Bluetooth/BLE en Linux.
+* `bluez-tools`: aporta herramientas como `bt-agent`, usada por el servicio automático de Bluetooth.
+* `i2c-tools`: permite revisar si la pantalla LCD aparece en el bus I2C, por ejemplo con `i2cdetect`.
+
+Además, la interfaz I2C debe estar habilitada en la Raspberry Pi. En este montaje la pantalla LCD trabajó con dirección `0x27`.
+
+### Dependencias de Python
+
+```bash
 pip3 install bluezero RPLCD smbus2
 ```
+
+* `bluezero`: biblioteca usada en `ble_server.py` para crear el periférico BLE, publicar el servicio y recibir mensajes desde el cliente.
+* `RPLCD`: biblioteca usada en `ble_server.py` y `test_lcd.py` para controlar la pantalla LCD 16x2 por I2C.
+* `smbus2`: biblioteca de soporte para la comunicación I2C usada por la pantalla LCD mediante el módulo PCF8574.
+
+También se usan módulos estándar de Python como `threading`, `time` y `re`. Estos no se instalan con `pip` porque ya vienen incluidos con Python.
+
 
 ## Prueba de la pantalla
 
@@ -146,4 +170,5 @@ Durante las pruebas se revisó el comportamiento del sistema mediante los logs d
 El proyecto fue probado en Raspberry Pi con una pantalla LCD 16x2 por I2C y ejecución automática mediante `systemd`.
 
 El alcance actual cubre la recepción inalámbrica de mensajes y su visualización en pantalla. No incluye aplicación móvil propia, almacenamiento de mensajes ni autenticación avanzada.
+
 
