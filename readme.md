@@ -4,13 +4,13 @@
 
 - Jose Miguel Sánchez Vargas
 - Juan Pablo Prieto Vergara
-- Vladimir
+- Vladimir Enrique Alvarez
 
 ## Descripción
 
 Este proyecto implementa una comunicación inalámbrica básica entre un celular y una Raspberry Pi usando Bluetooth Low Energy (BLE). Los mensajes enviados desde el cliente BLE son recibidos por la Raspberry y mostrados en una pantalla LCD 16x2 conectada por I2C.
 
-La idea del montaje es sencilla: usar la Raspberry como controlador, BLE como medio de comunicación inalámbrica y la pantalla LCD como salida visual del sistema. El proyecto se desarrolló como ejercicio práctico para integrar software, comunicación y un dispositivo físico de salida en un entorno embebido.
+La idea del montaje se basa en usar la Raspberry como controlador, el Bluetooth como medio de comunicación inalámbrica y la pantalla LCD para la salida visual del mensaje.
 
 ## Objetivo
 
@@ -22,12 +22,7 @@ Al iniciar, la Raspberry configura la pantalla LCD y publica un servicio BLE. De
 
 Cuando llega un mensaje, el programa lo limpia, actualiza el historial interno y lo muestra en la LCD. La pantalla conserva los dos mensajes más recientes. Si el texto supera el ancho de 16 caracteres, se desplaza horizontalmente para facilitar su lectura.
 
-También se muestran eventos básicos del sistema, como conexión y desconexión del cliente BLE:
-
-```text
-Conectado!!!
-Sin conexion
-```
+También se muestran eventos básicos del sistema, como conexión y desconexión del cliente Bluetooth.
 
 ## Estructura del repositorio
 
@@ -56,9 +51,6 @@ Sin conexion
 
 - Raspberry Pi con Bluetooth disponible.
 - Pantalla LCD 16x2 con módulo I2C.
-- Python 3.
-- Bluetooth habilitado en Raspberry Pi OS.
-- Bibliotecas de Python para BLE y LCD.
 
 Dependencias principales:
 
@@ -67,8 +59,6 @@ sudo apt update
 sudo apt install python3-pip bluetooth bluez
 pip3 install bluezero RPLCD smbus2
 ```
-
-En este montaje la pantalla LCD trabajó con dirección I2C `0x27`. Si otra pantalla usa una dirección diferente, debe ajustarse en el código.
 
 ## Prueba de la pantalla
 
@@ -133,13 +123,23 @@ Ver los registros en tiempo real:
 journalctl -u ble-server.service -f
 ```
 
-## Notas de implementación
+## Decisiones de implementación y pruebas
 
-El programa usa un servicio BLE tipo UART. El cliente escribe datos en una característica de recepción y la Raspberry los procesa como texto.
+El primer paso del montaje fue validar la pantalla LCD de forma independiente antes de integrarla con la comunicación inalámbrica. Para esto se usó una pantalla LCD 16x2 con módulo I2C basado en PCF8574, configurada en la dirección `0x27`. Esta prueba permitió confirmar que la Raspberry podía comunicarse correctamente con la pantalla por el bus I2C antes de ejecutar el programa completo.
 
-La actualización de la LCD se ejecuta en un hilo separado para no bloquear la comunicación BLE. Para evitar conflictos entre el hilo de pantalla y los eventos de recepción, se usa un bloqueo (`threading.Lock`) sobre las variables compartidas del historial y del texto visible.
+La comunicación inalámbrica se implementó usando la interfaz Bluetooth integrada de la Raspberry Pi. En este caso no se trata de un puerto físico como USB o GPIO, sino de una interfaz de comunicación por radio disponible en la placa. Se decidió usar Bluetooth Low Energy porque permite establecer una conexión directa con un celular, y en particular porque es compatible con el tipo de comunicación que puede utilizarse desde un iPhone mediante aplicaciones cliente BLE.
 
-Los archivos `.service` permiten que el sistema no dependa de abrir manualmente una terminal. Esto es útil cuando la Raspberry se usa como dispositivo embebido autónomo.
+El programa principal trabaja con un servicio BLE tipo UART. En términos prácticos, esto permite que el celular escriba un mensaje y que la Raspberry lo reciba como una secuencia de datos. Luego el programa convierte esos datos en texto, los limpia y los muestra en la pantalla LCD. Esta lógica permitió cumplir el objetivo del miniproyecto: recibir información de forma inalámbrica y reflejarla en una salida física del sistema.
+
+Una parte importante del funcionamiento está en la actualización de la pantalla. La LCD debe refrescarse constantemente, sobre todo cuando el mensaje es más largo que 16 caracteres y necesita desplazarse horizontalmente. Para que esa actualización no bloquee la recepción de mensajes BLE, se usó un hilo de ejecución separado. Un hilo puede entenderse como una tarea que corre en paralelo dentro del mismo programa: mientras una parte del código sigue atenta a los mensajes recibidos, otra parte se encarga de mantener actualizada la pantalla.
+
+Como ambos procesos pueden usar la misma información —por ejemplo, el historial de mensajes, el texto visible y la posición del desplazamiento— fue necesario proteger esas variables compartidas. Para esto se usó un bloqueo con `threading.Lock`. El bloqueo funciona como un candado: cuando una parte del programa está modificando el historial o el texto que se muestra, la otra debe esperar. Esto evita que la pantalla lea información incompleta o que un mensaje nuevo se mezcle con una actualización en curso.
+
+La ejecución automática se resolvió mediante servicios de `systemd`. El servicio principal, `ble-server.service`, se encarga de iniciar el programa de Python sin necesidad de abrir una terminal manualmente. Además, se configuró para depender de `bluetooth.service` y de `bt-agent-auto.service`, ya que el servidor BLE necesita que Bluetooth y el agente de conexión estén disponibles antes de iniciar. Por eso el archivo usa instrucciones como `Requires`, que declara dependencias necesarias, y `After`, que define el orden de arranque.
+
+También se incluyó una espera inicial de cuatro segundos mediante `ExecStartPre=/bin/sleep 4`. Esta pausa evita que el programa arranque demasiado pronto, antes de que el sistema termine de preparar Bluetooth y los servicios asociados. En la práctica, esta pequeña espera ayudó a mejorar la estabilidad del arranque automático.
+
+Durante las pruebas se revisó el comportamiento del sistema mediante los logs de `systemd`, especialmente con `journalctl`. Esto permitió confirmar si la pantalla había iniciado correctamente, si el servicio BLE se había publicado y si el programa seguía activo después de reiniciar la Raspberry. El proceso de depuración se hizo de forma progresiva: primero la LCD, luego el servidor BLE y finalmente la ejecución automática como servicio.
 
 ## Estado del proyecto
 
