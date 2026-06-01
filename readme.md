@@ -4,6 +4,7 @@
 
 - Jose Miguel Sánchez Vargas
 - Juan Pablo Prieto Vergara
+- Vladimir
 
 ## Descripción
 
@@ -146,6 +147,3 @@ El proyecto fue probado en Raspberry Pi con una pantalla LCD 16x2 por I2C y ejec
 
 El alcance actual cubre la recepción inalámbrica de mensajes y su visualización en pantalla. No incluye aplicación móvil propia, almacenamiento de mensajes ni autenticación avanzada.
 
-## Descripción corta para GitHub
-
-Miniproyecto de sistemas embebidos con Raspberry Pi: recepción de mensajes por BLE y visualización en LCD 16x2 mediante I2C.
