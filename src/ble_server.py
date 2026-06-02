@@ -19,6 +19,9 @@ from RPLCD.i2c import CharLCD
 import threading
 import time
 import re
+import subprocess
+import json
+from pathlib import Path
 
 # ============================================================
 # CONFIGURACIÓN GENERAL DEL SERVICIO BLE UART
@@ -77,6 +80,28 @@ lock = threading.Lock()
 
 # Bandera de control del bucle de la LCD.
 running = True
+
+DISPLAY_STATE_FILE = Path("/home/raspberry/lcd_state.json")
+LCD_OVERRIDE_FILE = Path("/home/raspberry/lcd_override.lock")
+
+
+def publish_display_state():
+    """Guarda el último contenido lógico de la LCD para restaurarlo si hay interrupción GPIO."""
+    try:
+        data = {
+            "line_1": messages[0],
+            "line_2": messages[1],
+            "ts": time.time()
+        }
+        DISPLAY_STATE_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:
+        print("ERROR guardando estado LCD:", e, flush=True)
+
+
+def display_override_active():
+    """Indica si otro servicio, como GPIO shutdown, está tomando control temporal de la LCD."""
+    return LCD_OVERRIDE_FILE.exists()
+
 
 
 # ============================================================
@@ -169,6 +194,12 @@ def lcd_loop():
             else:
                 offsets[1] = 0
 
+        if display_override_active():
+            last_line_1 = None
+            last_line_2 = None
+            time.sleep(SCROLL_DELAY)
+            continue
+
         if lcd_ok:
             try:
                 # Evita reescrituras innecesarias: solo actualiza una línea si cambió.
@@ -200,6 +231,7 @@ def set_display_lines(line_1, line_2):
     with lock:
         messages = [clean_text(line_1), clean_text(line_2)]
         offsets = [0, 0]
+        publish_display_state()
 
 
 def add_message(text):
@@ -222,8 +254,131 @@ def add_message(text):
         messages = history[:]
         offsets = [0, 0]
         has_history = True
+        publish_display_state()
 
     print("LCD actualizado. Penultimo='{}' Ultimo='{}'".format(previous_last, text), flush=True)
+
+
+
+
+WIFI_COMMAND_CONFIG = Path("/home/raspberry/wifi_command_config.json")
+
+
+def load_wifi_command_config():
+    """Carga token y ruta del script usado para cambiar de red WiFi."""
+    default = {
+        "token": "CAMBIA_ESTE_TOKEN",
+        "connect_script": "/home/raspberry/connect_wifi.sh"
+    }
+
+    try:
+        if WIFI_COMMAND_CONFIG.exists():
+            with WIFI_COMMAND_CONFIG.open("r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            default.update(cfg)
+    except Exception as e:
+        print("ERROR leyendo wifi_command_config.json:", e, flush=True)
+
+    return default
+
+
+def parse_wifi_command(text):
+    """Detecta comandos de cambio de WiFi.
+
+    Formato:
+    wifi|TOKEN|SSID|PASSWORD
+
+    El comando completo no se imprime para no dejar contraseñas en logs.
+    """
+    raw = str(text).strip()
+
+    if not raw.lower().startswith("wifi|"):
+        return None
+
+    parts = raw.split("|", 3)
+
+    if len(parts) != 4:
+        return {
+            "ok": False,
+            "error": "Formato WiFi invalido"
+        }
+
+    _, token, ssid, password = parts
+    cfg = load_wifi_command_config()
+
+    if token != cfg["token"]:
+        return {
+            "ok": False,
+            "error": "Token WiFi invalido"
+        }
+
+    ssid = ssid.strip()
+    password = password.strip()
+
+    if not ssid or not password:
+        return {
+            "ok": False,
+            "error": "SSID o clave vacios"
+        }
+
+    return {
+        "ok": True,
+        "ssid": ssid,
+        "password": password,
+        "connect_script": cfg["connect_script"]
+    }
+
+
+def connect_wifi_from_command(command):
+    """Ejecuta el script seguro de conexión WiFi mediante nmcli."""
+    try:
+        print("Comando WiFi valido. Intentando conectar a SSID='{}'".format(command["ssid"]), flush=True)
+
+        result = subprocess.run(
+            [
+                "sudo",
+                command["connect_script"]
+            ],
+            input=command["ssid"] + "\n" + command["password"] + "\n",
+            capture_output=True,
+            text=True,
+            timeout=45
+        )
+
+        if result.returncode == 0:
+            print("Conexion WiFi solicitada correctamente para SSID='{}'".format(command["ssid"]), flush=True)
+            return True
+
+        print("ERROR conectando WiFi. returncode={}".format(result.returncode), flush=True)
+        print("stdout:", result.stdout, flush=True)
+        print("stderr:", result.stderr, flush=True)
+        return False
+
+    except Exception as e:
+        print("ERROR ejecutando cambio WiFi:", e, flush=True)
+        return False
+
+
+def request_mode_switch(target_mode):
+    """Solicita a systemd cambiar de modo sin bloquear el servicio actual."""
+    try:
+        print("Solicitando cambio a modo {}...".format(target_mode), flush=True)
+        subprocess.Popen([
+            "sudo",
+            "/usr/bin/systemctl",
+            "start",
+            "display-mode-switch@{}.service".format(target_mode)
+        ])
+    except Exception as e:
+        print("ERROR solicitando cambio de modo:", e, flush=True)
+
+
+def is_switch_command(text):
+    """Detecta comandos internos enviados por BLE."""
+    command = clean_text(text).lower()
+    if command in ("wifi", "web"):
+        return "web"
+    return None
 
 
 # ============================================================
@@ -279,6 +434,28 @@ class UARTDevice:
 
         text = clean_text(text)
         print(">>> Mensaje recibido:", text, flush=True)
+
+        wifi_command = parse_wifi_command(text)
+        if wifi_command:
+            if not wifi_command.get("ok"):
+                add_message(wifi_command.get("error", "WiFi invalido"))
+                return
+
+            add_message("Conectando WiFi")
+
+            if connect_wifi_from_command(wifi_command):
+                add_message("WiFi conectado")
+                request_mode_switch("web")
+            else:
+                add_message("Error WiFi")
+
+            return
+
+        target_mode = is_switch_command(text)
+        if target_mode:
+            add_message("Cambiando a web")
+            request_mode_switch(target_mode)
+            return
 
         # El mensaje recibido se envía al historial visible de la LCD.
         add_message(text)

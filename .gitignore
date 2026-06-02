@@ -1,22 +1,12 @@
-# Python
+.env
 __pycache__/
-*.py[cod]
-*.pyo
-*.pyd
+*.pyc
 *.log
-
-# Entornos virtuales
-.venv/
-venv/
-env/
-
-# Archivos temporales del sistema
-.DS_Store
-Thumbs.db
-
-# Paquetes o respaldos locales
 *.tar.gz
-*.zip
-backup*/
-legacy*/
-logs/
+last_web_id.txt
+lcd_state.json
+lcd_override.lock
+web_config.json
+wifi_command_config.json
+gpio_shutdown_config.json
+web_api/config.php

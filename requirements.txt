@@ -1,0 +1,5 @@
+bluezero
+RPLCD
+smbus2
+requests
+gpiozero

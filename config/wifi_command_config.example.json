@@ -1,0 +1,4 @@
+{
+  "token": "CAMBIA_ESTE_TOKEN",
+  "connect_script": "/home/raspberry/connect_wifi.sh"
+}

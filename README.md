@@ -8,167 +8,334 @@
 
 ## Descripción
 
-Este proyecto implementa una comunicación inalámbrica básica entre un celular y una Raspberry Pi usando Bluetooth Low Energy (BLE). Los mensajes enviados desde el cliente BLE son recibidos por la Raspberry y mostrados en una pantalla LCD 16x2 conectada por I2C.
+Este proyecto implementa una pantalla remota con Raspberry Pi y LCD 16x2 I2C. El sistema puede recibir mensajes por dos vías: Bluetooth Low Energy (BLE) o una página web pública. Los mensajes se muestran en la LCD, conservando el historial visible de las dos últimas entradas.
 
-La idea del montaje se basa en usar la Raspberry como controlador, el Bluetooth como medio de comunicación inalámbrica y la pantalla LCD para la salida visual del mensaje.
+El montaje evolucionó desde una comunicación BLE básica hacia un sistema multimodo con servicios de Linux, conmutación entre modos, recuperación ante fallos de internet, configuración de WiFi por BLE y apagado físico seguro por GPIO.
 
-## Objetivo
+## Arquitectura general
 
-Recibir mensajes de forma inalámbrica en una Raspberry Pi y mostrarlos en una pantalla LCD 16x2, usando Python, BLE y comunicación I2C.
+```text
+Modo BLE:
+PC o celular BLE → Raspberry Pi → LCD 16x2 I2C
 
-## Funcionamiento
+Modo Web:
+Página web → API PHP/MySQL → Raspberry Pi por polling → LCD 16x2 I2C
 
-Al iniciar, la Raspberry configura la pantalla LCD y publica un servicio BLE. Desde un celular o cliente compatible se puede establecer conexión y enviar mensajes de texto.
+Control físico:
+Puente GPIO21-GND → cuenta regresiva en LCD → shutdown seguro
+```
 
-Cuando llega un mensaje, el programa lo limpia, actualiza el historial interno y lo muestra en la LCD. La pantalla conserva los dos mensajes más recientes. Si el texto supera el ancho de 16 caracteres, se desplaza horizontalmente para facilitar su lectura.
+## Funciones principales
 
-También se muestran eventos básicos del sistema, como conexión y desconexión del cliente Bluetooth.
+- Recepción de mensajes por Bluetooth Low Energy.
+- Recepción de mensajes desde una página web pública.
+- API en PHP/MySQL para guardar mensajes y reportar si la Raspberry está activa.
+- Polling desde la Raspberry hacia el hosting.
+- Cambio de modo por comando:
+  - Desde Web: `ble` o `bluetooth`.
+  - Desde BLE: `web` o `wifi`.
+- Configuración de red WiFi desde BLE con el formato:
+  - `wifi|TOKEN|SSID|PASSWORD`
+- Fallback automático: si el modo Web no puede consultar la API varias veces, cambia a modo BLE.
+- Apagado físico seguro:
+  - Pin físico 39 = GND.
+  - Pin físico 40 = GPIO21 / BCM21.
+  - Puente puesto = funcionamiento normal.
+  - Puente retirado = cuenta regresiva de apagado.
+- Limpieza de pantalla antes de apagar.
+- Servicios `systemd` para operación autónoma.
 
 ## Estructura del repositorio
 
 ```text
 .
+├── config/
+│   ├── gpio_shutdown_config.example.json
+│   ├── web_config.example.json
+│   └── wifi_command_config.example.json
+├── docs/
+│   ├── comandos_actualizar_repo.md
+│   └── memoria_tecnica.md
+├── scripts/
+│   ├── connect_wifi.sh
+│   ├── diagnostico_display.sh
+│   ├── install_display_project.sh
+│   ├── organize_legacy.sh
+│   └── switch_display_mode.sh
 ├── src/
 │   ├── ble_server.py
-│   └── test_lcd.py
+│   ├── gpio_shutdown_watch.py
+│   ├── test_lcd.py
+│   └── web_poll_display.py
 ├── systemd/
 │   ├── ble-server.service
-│   └── bt-agent-auto.service
-└── .gitignore
+│   ├── bt-agent-auto.service
+│   ├── display-mode-switch@.service
+│   ├── gpio-shutdown.service
+│   └── web-display.service
+├── tools/
+│   └── windows/
+│       └── send_ble.py
+├── web_api/
+│   ├── config.example.php
+│   ├── poll.php
+│   ├── schema.sql
+│   ├── send_message.php
+│   └── status.php
+├── wordpress/
+│   └── publica-mensaje.html
+├── .gitignore
+├── README.md
+└── requirements.txt
 ```
 
 ## Archivos principales
 
-`src/ble_server.py` contiene el programa principal. Configura el servidor BLE, recibe mensajes, controla el historial y actualiza la pantalla LCD.
+`src/ble_server.py` ejecuta el modo BLE. Publica la Raspberry como periférico BLE tipo UART, recibe mensajes, actualiza la LCD y reconoce comandos internos de cambio de modo o configuración WiFi.
 
-`src/test_lcd.py` permite probar la pantalla LCD de forma independiente, antes de ejecutar el sistema completo.
+`src/web_poll_display.py` ejecuta el modo Web. Consulta periódicamente la API, muestra mensajes nuevos en la LCD y cambia automáticamente a BLE si falla la conexión con el servidor.
 
-`systemd/ble-server.service` permite ejecutar el programa principal como servicio de Linux.
+`src/gpio_shutdown_watch.py` mantiene activo el apagado físico. Lee GPIO21, toma control temporal de la LCD con una cuenta regresiva y ejecuta `shutdown -h now` si el puente no se reconecta.
 
-`systemd/bt-agent-auto.service` inicia un agente Bluetooth automático para facilitar la conexión desde dispositivos externos.
+`scripts/switch_display_mode.sh` cambia entre modo BLE y modo Web. Activa y desactiva los servicios necesarios para evitar que dos procesos escriban la LCD al mismo tiempo.
 
+`scripts/connect_wifi.sh` conecta la Raspberry a una red WiFi usando `nmcli`. Recibe SSID y contraseña por entrada estándar para no exponer la clave como argumento visible.
 
+`web_api/` contiene la API PHP/MySQL usada por la página y por la Raspberry.
 
-## Requisitos y dependencias
+`wordpress/publica-mensaje.html` contiene el bloque HTML, CSS y JavaScript para pegar en WordPress como “HTML personalizado”.
 
-- Raspberry Pi con Bluetooth disponible.
-- Pantalla LCD 16x2 con módulo I2C.
+## Requisitos
 
-El proyecto necesita dependencias de sistema en la Raspberry Pi y dependencias de Python. Las primeras permiten usar Bluetooth, BLE, servicios de Linux e I2C; las segundas son las bibliotecas que importa directamente el código.
+Hardware:
 
-### Dependencias de la Raspberry Pi
+- Raspberry Pi con Bluetooth y WiFi.
+- Pantalla LCD 16x2 con módulo I2C basado en PCF8574.
+- Puente hembra-hembra de 2.54 mm para GPIO21-GND.
+- Conexión a internet para el modo Web.
+
+Dependencias del sistema:
 
 ```bash
 sudo apt update
-sudo apt install python3 python3-pip bluetooth bluez bluez-tools i2c-tools
+sudo apt install -y python3 python3-pip bluetooth bluez bluez-tools i2c-tools python3-requests python3-gpiozero python3-lgpio network-manager
 ```
 
-* `python3`: ejecuta los archivos del proyecto.
-* `python3-pip`: permite instalar bibliotecas de Python.
-* `bluetooth` y `bluez`: habilitan el funcionamiento de Bluetooth/BLE en Linux.
-* `bluez-tools`: aporta herramientas como `bt-agent`, usada por el servicio automático de Bluetooth.
-* `i2c-tools`: permite revisar si la pantalla LCD aparece en el bus I2C, por ejemplo con `i2cdetect`.
-
-Además, la interfaz I2C debe estar habilitada en la Raspberry Pi. En este montaje la pantalla LCD trabajó con dirección `0x27`.
-
-### Dependencias de Python
+Dependencias de Python cuando se instalan con `pip`:
 
 ```bash
-pip3 install bluezero RPLCD smbus2
+pip3 install bluezero RPLCD smbus2 requests gpiozero
 ```
 
-* `bluezero`: biblioteca usada en `ble_server.py` para crear el periférico BLE, publicar el servicio y recibir mensajes desde el cliente.
-* `RPLCD`: biblioteca usada en `ble_server.py` y `test_lcd.py` para controlar la pantalla LCD 16x2 por I2C.
-* `smbus2`: biblioteca de soporte para la comunicación I2C usada por la pantalla LCD mediante el módulo PCF8574.
+En Raspberry Pi OS puede ser necesario instalar algunas librerías con `apt` o usar entorno virtual, dependiendo de la política de Python del sistema.
 
-También se usan módulos estándar de Python como `threading`, `time` y `re`. Estos no se instalan con `pip` porque ya vienen incluidos con Python.
-
-
-## Prueba de la pantalla
-
-Antes de ejecutar el servidor BLE, se puede probar la LCD con:
+## Habilitar I2C
 
 ```bash
-python3 src/test_lcd.py
+sudo raspi-config
 ```
 
-Si la conexión I2C está correcta, la pantalla debe mostrar un mensaje de prueba.
+Activar I2C en las opciones de interfaz y reiniciar si es necesario.
 
-## Ejecución manual
-
-Para ejecutar el proyecto desde la terminal:
+Verificar dirección de la LCD:
 
 ```bash
-python3 src/ble_server.py
+i2cdetect -y 1
 ```
 
-Mientras el programa esté activo, la Raspberry quedará esperando una conexión BLE y mostrará en la LCD los mensajes recibidos.
+En este montaje se usó la dirección `0x27`.
 
-## Ejecución como servicio
+## Instalación en la Raspberry
 
-Para dejar el proyecto funcionando automáticamente al iniciar la Raspberry, se incluyen dos archivos de servicio para `systemd`.
-
-Copiar los servicios:
+Copiar el repositorio a la Raspberry, por ejemplo:
 
 ```bash
-sudo cp systemd/bt-agent-auto.service /etc/systemd/system/bt-agent-auto.service
-sudo cp systemd/ble-server.service /etc/systemd/system/ble-server.service
+scp -r . raspberry@192.168.1.52:/home/raspberry/raspberry-display-modes
 ```
 
-Recargar `systemd`:
+Entrar por SSH:
 
 ```bash
-sudo systemctl daemon-reload
+ssh raspberry@192.168.1.52
 ```
 
-Habilitar los servicios:
+Instalar:
 
 ```bash
-sudo systemctl enable bt-agent-auto.service
-sudo systemctl enable ble-server.service
+cd /home/raspberry/raspberry-display-modes
+chmod +x scripts/*.sh
+sudo ./scripts/install_display_project.sh
 ```
 
-Iniciarlos:
+Editar configuración Web:
 
 ```bash
-sudo systemctl start bt-agent-auto.service
-sudo systemctl start ble-server.service
+nano /home/raspberry/web_config.json
 ```
 
-Verificar el estado:
+Editar token de comandos WiFi por BLE:
 
 ```bash
-systemctl status ble-server.service --no-pager
+nano /home/raspberry/wifi_command_config.json
 ```
 
-Ver los registros en tiempo real:
+## Configuración del hosting
+
+1. Crear una base de datos MySQL.
+2. Ejecutar `web_api/schema.sql`.
+3. Subir los archivos PHP a una carpeta pública, por ejemplo `/api`.
+4. Copiar `config.example.php` como `config.php`.
+5. Completar credenciales de base de datos y token de Raspberry.
+
+Pruebas esperadas:
+
+```text
+https://TU_DOMINIO/api/status.php
+https://TU_DOMINIO/api/poll.php?token=TU_TOKEN&last_id=0
+```
+
+`send_message.php` debe probarse por POST.
+
+## Página WordPress
+
+Crear una página plana o tipo landing page y pegar el contenido de:
+
+```text
+wordpress/publica-mensaje.html
+```
+
+en un bloque de “HTML personalizado”.
+
+La página consulta `status.php` cada cinco segundos. Si la Raspberry está activa, muestra el formulario; si no, oculta el envío.
+
+## Uso de modos
+
+Ver estado:
 
 ```bash
-journalctl -u ble-server.service -f
+/home/raspberry/switch_display_mode.sh status
 ```
 
-## Decisiones de implementación y pruebas
+Activar modo Web:
 
-El primer paso del montaje fue validar la pantalla LCD de forma independiente antes de integrarla con la comunicación inalámbrica. Para esto se usó una pantalla LCD 16x2 con módulo I2C basado en PCF8574, configurada en la dirección `0x27`. Esta prueba permitió confirmar que la Raspberry podía comunicarse correctamente con la pantalla por el bus I2C antes de ejecutar el programa completo.
+```bash
+sudo /home/raspberry/switch_display_mode.sh web
+```
 
-La comunicación inalámbrica se implementó usando la interfaz Bluetooth integrada de la Raspberry Pi. En este caso no se trata de un puerto físico como USB o GPIO, sino de una interfaz de comunicación por radio disponible en la placa. Se decidió usar Bluetooth Low Energy porque permite establecer una conexión directa con un celular, y en particular porque es compatible con el tipo de comunicación que puede utilizarse desde un iPhone mediante aplicaciones cliente BLE.
+Activar modo BLE:
 
-El programa principal trabaja con un servicio BLE tipo UART. En términos prácticos, esto permite que el celular escriba un mensaje y que la Raspberry lo reciba como una secuencia de datos. Luego el programa convierte esos datos en texto, los limpia y los muestra en la pantalla LCD. Esta lógica permitió cumplir el objetivo del miniproyecto: recibir información de forma inalámbrica y reflejarla en una salida física del sistema.
+```bash
+sudo /home/raspberry/switch_display_mode.sh ble
+```
 
-Una parte importante del funcionamiento está en la actualización de la pantalla. La LCD debe refrescarse constantemente, sobre todo cuando el mensaje es más largo que 16 caracteres y necesita desplazarse horizontalmente. Para que esa actualización no bloquee la recepción de mensajes BLE, se usó un hilo de ejecución separado. Un hilo puede entenderse como una tarea que corre en paralelo dentro del mismo programa: mientras una parte del código sigue atenta a los mensajes recibidos, otra parte se encarga de mantener actualizada la pantalla.
+Detener ambos modos de pantalla:
 
-Como ambos procesos pueden usar la misma información —por ejemplo, el historial de mensajes, el texto visible y la posición del desplazamiento— fue necesario proteger esas variables compartidas. Para esto se usó un bloqueo con `threading.Lock`. El bloqueo funciona como un candado: cuando una parte del programa está modificando el historial o el texto que se muestra, la otra debe esperar. Esto evita que la pantalla lea información incompleta o que un mensaje nuevo se mezcle con una actualización en curso.
+```bash
+sudo /home/raspberry/switch_display_mode.sh stop
+```
 
-La ejecución automática se resolvió mediante servicios de `systemd`. El servicio principal, `ble-server.service`, se encarga de iniciar el programa de Python sin necesidad de abrir una terminal manualmente. Además, se configuró para depender de `bluetooth.service` y de `bt-agent-auto.service`, ya que el servidor BLE necesita que Bluetooth y el agente de conexión estén disponibles antes de iniciar. Por eso el archivo usa instrucciones como `Requires`, que declara dependencias necesarias, y `After`, que define el orden de arranque.
+El servicio de apagado por GPIO permanece activo en ambos modos.
 
-También se incluyó una espera inicial de cuatro segundos mediante `ExecStartPre=/bin/sleep 4`. Esta pausa evita que el programa arranque demasiado pronto, antes de que el sistema termine de preparar Bluetooth y los servicios asociados. En la práctica, esta pequeña espera ayudó a mejorar la estabilidad del arranque automático.
+## Comandos internos
 
-Durante las pruebas se revisó el comportamiento del sistema mediante los logs de `systemd`, especialmente con `journalctl`. Esto permitió confirmar si la pantalla había iniciado correctamente, si el servicio BLE se había publicado y si el programa seguía activo después de reiniciar la Raspberry. El proceso de depuración se hizo de forma progresiva: primero la LCD, luego el servidor BLE y finalmente la ejecución automática como servicio.
+Desde la página web:
 
-## Estado del proyecto
+```text
+ble
+bluetooth
+```
 
-El proyecto fue probado en Raspberry Pi con una pantalla LCD 16x2 por I2C y ejecución automática mediante `systemd`.
+Cambian el sistema a modo BLE.
 
-El alcance actual cubre la recepción inalámbrica de mensajes y su visualización en pantalla. No incluye aplicación móvil propia, almacenamiento de mensajes ni autenticación avanzada.
+Desde BLE:
 
+```text
+web
+wifi
+```
 
+Cambian el sistema a modo Web.
+
+Desde BLE también se puede cambiar la red WiFi:
+
+```text
+wifi|TOKEN|SSID|PASSWORD
+```
+
+Si la conexión WiFi se logra, el sistema cambia automáticamente a modo Web.
+
+## Enviar mensajes BLE desde Windows
+
+Instalar `bleak`:
+
+```powershell
+pip install bleak
+```
+
+Usar:
+
+```powershell
+python tools\windows\send_ble.py "hola"
+python tools\windows\send_ble.py "web"
+python tools\windows\send_ble.py "wifi|TOKEN|SSID|PASSWORD"
+```
+
+## Apagado físico por GPIO
+
+Conexión:
+
+```text
+Pin físico 39 = GND
+Pin físico 40 = GPIO21 / BCM21
+```
+
+Funcionamiento:
+
+```text
+Puente puesto   = normal
+Puente retirado = cuenta regresiva
+Puente reconectado antes del final = se cancela apagado
+Cuenta terminada = APAGANDO !!!, limpia LCD y ejecuta shutdown
+```
+
+Después del apagado, volver a poner el puente antes de alimentar de nuevo la Raspberry.
+
+## Logs y diagnóstico
+
+Logs principales:
+
+```bash
+journalctl -u web-display.service -n 80 --no-pager
+journalctl -u ble-server.service -n 80 --no-pager
+journalctl -u gpio-shutdown.service -n 80 --no-pager
+journalctl -u bt-agent-auto.service -n 80 --no-pager
+```
+
+Exportar diagnóstico:
+
+```bash
+/home/raspberry/diagnostico_display.sh
+```
+
+Descargar desde Windows:
+
+```powershell
+scp raspberry@192.168.1.52:/home/raspberry/diagnostico_display_*.tar.gz .
+```
+
+## Estado actual del proyecto
+
+El sistema quedó probado con:
+
+- Modo Web activo por defecto.
+- Cambio Web → BLE por mensaje `ble`.
+- Cambio BLE → Web por mensaje `web`.
+- Cambio de red WiFi desde BLE.
+- Fallback Web → BLE por error de API.
+- Apagado físico por GPIO con cuenta regresiva.
+- Limpieza de LCD antes de apagado.
+- Servicios `systemd` con conflictos entre modos para evitar escritura simultánea en la pantalla.
+
+## Descripción corta para GitHub
+
+Sistema embebido con Raspberry Pi, LCD 16x2 I2C, comunicación BLE y Web, cambio automático de modos, configuración WiFi por BLE y apagado seguro por GPIO.

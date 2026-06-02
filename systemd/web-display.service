@@ -1,0 +1,34 @@
+# Servicio principal del modo web.
+# Consulta una API en internet y muestra los mensajes recibidos en la LCD.
+
+[Unit]
+Description=Pantalla Raspberry desde pagina web
+
+# El modo web no debe correr al mismo tiempo que el modo BLE.
+Conflicts=ble-server.service bt-agent-auto.service
+
+# Este modo necesita red. network-online.target intenta esperar a que la red esté lista.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStartPre=/bin/rm -f /home/raspberry/lcd_override.lock
+Type=simple
+
+# Espera breve para que la red y el bus I2C estén disponibles al arranque.
+ExecStartPre=/bin/sleep 4
+
+# Ejecuta el script de polling web con salida sin buffer (-u).
+ExecStart=/usr/bin/python3 -u /home/raspberry/web_poll_display.py
+
+WorkingDirectory=/home/raspberry
+User=raspberry
+
+Restart=always
+RestartSec=5
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

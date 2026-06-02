@@ -1,15 +1,19 @@
-# Servicio principal del miniproyecto.
+# Servicio principal del modo BLE.
 # Ejecuta el servidor BLE UART + LCD al iniciar la Raspberry Pi.
 
 [Unit]
 Description=Servidor BLE Raspberry
 
-# El servidor depende del servicio Bluetooth del sistema y del agente automático.
+# Este modo no debe correr al mismo tiempo que el modo web, porque ambos escriben en la LCD.
+Conflicts=web-display.service
+
+# El servidor depende del Bluetooth del sistema y del agente automático.
 # After define orden de arranque; Requires define dependencia fuerte.
 After=bluetooth.service bt-agent-auto.service
 Requires=bluetooth.service bt-agent-auto.service
 
 [Service]
+ExecStartPre=/bin/rm -f /home/raspberry/lcd_override.lock
 # Type=simple es adecuado para un script Python que queda corriendo en primer plano.
 Type=simple
 

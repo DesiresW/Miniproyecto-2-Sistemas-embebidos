@@ -1,0 +1,19 @@
+{
+  "gpio_pin_bcm": 21,
+  "countdown_seconds": 5,
+  "bounce_time": 0.3,
+  "startup_grace_time": 8,
+  "lcd_addr": "0x27",
+  "lcd_cols": 16,
+  "lcd_rows": 2,
+  "services_to_stop": [
+    "web-display.service",
+    "ble-server.service",
+    "bt-agent-auto.service"
+  ],
+  "shutdown_command": [
+    "/usr/sbin/shutdown",
+    "-h",
+    "now"
+  ]
+}

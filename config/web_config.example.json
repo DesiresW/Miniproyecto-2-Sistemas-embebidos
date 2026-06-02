@@ -1,0 +1,10 @@
+{
+  "poll_url": "https://TU_DOMINIO/api/poll.php",
+  "token": "CAMBIA_ESTE_TOKEN",
+  "poll_interval": 3,
+  "last_id_file": "/home/raspberry/last_web_id.txt",
+  "lcd_addr": "0x27",
+  "lcd_cols": 16,
+  "lcd_rows": 2,
+  "max_consecutive_errors": 5
+}

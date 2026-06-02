@@ -1,0 +1,247 @@
+<!-- Bloque para WordPress: pegar en "HTML personalizado". -->
+<div id="lcd-message-app">
+  <style>
+    #lcd-message-app {
+      min-height: 80vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #eef4ff 0%, #f8fafc 45%, #ffffff 100%);
+      color: #111827;
+    }
+    #lcd-message-app .lcd-card {
+      width: 100%;
+      max-width: 520px;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      border-radius: 28px;
+      padding: 34px;
+      box-shadow: 0 24px 70px rgba(15, 23, 42, 0.13);
+      backdrop-filter: blur(10px);
+    }
+    #lcd-message-app .lcd-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #3730a3;
+      font-size: 0.86rem;
+      font-weight: 650;
+      margin-bottom: 18px;
+    }
+    #lcd-message-app .lcd-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #9ca3af;
+    }
+    #lcd-message-app .lcd-dot.online {
+      background: #22c55e;
+      box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.14);
+    }
+    #lcd-message-app h1 {
+      margin: 0;
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      line-height: 1.02;
+      letter-spacing: -0.05em;
+      color: #0f172a;
+    }
+    #lcd-message-app p {
+      margin: 16px 0 0;
+      color: #475569;
+      font-size: 1.02rem;
+      line-height: 1.6;
+    }
+    #lcd-message-app .lcd-form { margin-top: 26px; display: none; }
+    #lcd-message-app textarea {
+      width: 100%;
+      min-height: 130px;
+      resize: vertical;
+      border: 1px solid #cbd5e1;
+      border-radius: 18px;
+      padding: 16px;
+      font-size: 1rem;
+      line-height: 1.45;
+      outline: none;
+      box-sizing: border-box;
+      background: #f8fafc;
+      color: #0f172a;
+    }
+    #lcd-message-app textarea:focus {
+      border-color: #6366f1;
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.14);
+      background: #ffffff;
+    }
+    #lcd-message-app .lcd-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin-top: 14px;
+    }
+    #lcd-message-app .lcd-count { color: #64748b; font-size: 0.9rem; }
+    #lcd-message-app button {
+      border: 0;
+      border-radius: 999px;
+      padding: 13px 22px;
+      font-size: 0.98rem;
+      font-weight: 700;
+      cursor: pointer;
+      color: white;
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      box-shadow: 0 12px 28px rgba(79, 70, 229, 0.28);
+    }
+    #lcd-message-app button:disabled { opacity: 0.55; cursor: not-allowed; }
+    #lcd-message-app .lcd-alert {
+      margin-top: 20px;
+      padding: 14px 16px;
+      border-radius: 16px;
+      font-size: 0.95rem;
+      display: none;
+    }
+    #lcd-message-app .lcd-alert.ok {
+      display: block;
+      background: #ecfdf5;
+      color: #166534;
+      border: 1px solid #bbf7d0;
+    }
+    #lcd-message-app .lcd-alert.error {
+      display: block;
+      background: #fef2f2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+    }
+    #lcd-message-app .lcd-loading {
+      margin-top: 24px;
+      color: #64748b;
+      font-size: 0.95rem;
+    }
+  </style>
+
+  <div class="lcd-card">
+    <div class="lcd-badge">
+      <span id="lcdStatusDot" class="lcd-dot"></span>
+      <span id="lcdStatusText">Verificando pantalla...</span>
+    </div>
+
+    <h1>Publica tu mensaje</h1>
+
+    <p id="lcdIntro">
+      Estamos revisando si la Raspberry está conectada para mostrar tu mensaje en la pantalla física.
+    </p>
+
+    <div id="lcdLoading" class="lcd-loading">Consultando disponibilidad...</div>
+
+    <form id="lcdForm" class="lcd-form">
+      <textarea id="lcdMessage" maxlength="160" placeholder="Escribe un mensaje corto para mostrarlo en la pantalla..."></textarea>
+      <div class="lcd-row">
+        <span id="lcdCount" class="lcd-count">0 / 160</span>
+        <button id="lcdSubmit" type="submit">Enviar mensaje</button>
+      </div>
+    </form>
+
+    <div id="lcdAlert" class="lcd-alert"></div>
+  </div>
+
+  <script>
+    (function () {
+      const STATUS_URL = "https://TU_DOMINIO/api/status.php";
+      const SEND_URL = "https://TU_DOMINIO/api/send_message.php";
+
+      const dot = document.getElementById("lcdStatusDot");
+      const statusText = document.getElementById("lcdStatusText");
+      const intro = document.getElementById("lcdIntro");
+      const loading = document.getElementById("lcdLoading");
+      const form = document.getElementById("lcdForm");
+      const textarea = document.getElementById("lcdMessage");
+      const count = document.getElementById("lcdCount");
+      const button = document.getElementById("lcdSubmit");
+      const alertBox = document.getElementById("lcdAlert");
+
+      function showAlert(type, message) {
+        alertBox.className = "lcd-alert " + type;
+        alertBox.textContent = message;
+      }
+
+      function clearAlert() {
+        alertBox.className = "lcd-alert";
+        alertBox.textContent = "";
+      }
+
+      async function checkStatus() {
+        try {
+          const response = await fetch(STATUS_URL, { cache: "no-store" });
+          const data = await response.json();
+          loading.style.display = "none";
+
+          if (data.online) {
+            dot.classList.add("online");
+            statusText.textContent = "Pantalla disponible";
+            intro.textContent = "La Raspberry está conectada. Puedes enviar un mensaje para verlo en la pantalla LCD.";
+            form.style.display = "block";
+          } else {
+            dot.classList.remove("online");
+            statusText.textContent = "Pantalla no disponible";
+            intro.textContent = "La pantalla no está conectada en este momento. Intenta nuevamente más tarde.";
+            form.style.display = "none";
+          }
+        } catch (error) {
+          loading.style.display = "none";
+          dot.classList.remove("online");
+          statusText.textContent = "No se pudo verificar";
+          intro.textContent = "Hubo un problema consultando el estado de la pantalla.";
+          form.style.display = "none";
+        }
+      }
+
+      textarea.addEventListener("input", function () {
+        count.textContent = textarea.value.length + " / 160";
+      });
+
+      form.addEventListener("submit", async function (event) {
+        event.preventDefault();
+        clearAlert();
+
+        const mensaje = textarea.value.trim();
+
+        if (!mensaje) {
+          showAlert("error", "Escribe un mensaje antes de enviar.");
+          return;
+        }
+
+        button.disabled = true;
+        button.textContent = "Enviando...";
+
+        try {
+          const response = await fetch(SEND_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mensaje })
+          });
+
+          const data = await response.json();
+
+          if (data.ok) {
+            showAlert("ok", "Mensaje enviado correctamente.");
+            textarea.value = "";
+            count.textContent = "0 / 160";
+          } else {
+            showAlert("error", data.error || "No se pudo enviar el mensaje.");
+          }
+        } catch (error) {
+          showAlert("error", "Error de conexión al enviar el mensaje.");
+        } finally {
+          button.disabled = false;
+          button.textContent = "Enviar mensaje";
+        }
+      });
+
+      checkStatus();
+      setInterval(checkStatus, 5000);
+    })();
+  </script>
+</div>

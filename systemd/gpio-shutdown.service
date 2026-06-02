@@ -1,0 +1,25 @@
+# Servicio de apagado físico por GPIO.
+# Debe estar activo independientemente del modo BLE o Web.
+
+[Unit]
+Description=Apagado seguro por GPIO
+
+# Se inicia después de que el sistema ya está en operación normal.
+After=multi-user.target
+
+[Service]
+Type=simple
+
+# Este servicio corre como root porque necesita detener servicios y ejecutar shutdown.
+ExecStart=/usr/bin/python3 -u /home/raspberry/gpio_shutdown_watch.py
+WorkingDirectory=/home/raspberry
+User=root
+
+Restart=always
+RestartSec=3
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

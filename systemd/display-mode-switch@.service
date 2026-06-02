@@ -1,0 +1,6 @@
+[Unit]
+Description=Cambiar modo de pantalla a %i
+
+[Service]
+Type=oneshot
+ExecStart=/home/raspberry/switch_display_mode.sh %i

@@ -4,6 +4,9 @@
 [Unit]
 Description=Agente Bluetooth automatico
 
+# Este servicio pertenece al modo BLE. No se necesita cuando está activo el modo web.
+Conflicts=web-display.service
+
 # El agente requiere que el servicio Bluetooth del sistema esté activo.
 After=bluetooth.service
 Requires=bluetooth.service
