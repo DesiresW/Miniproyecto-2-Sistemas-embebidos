@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.log
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Archivos temporales del sistema
+.DS_Store
+Thumbs.db
+
+# Paquetes o respaldos locales
+*.tar.gz
+*.zip
+backup*/
+legacy*/
+logs/

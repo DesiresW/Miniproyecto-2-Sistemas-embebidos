@@ -1,0 +1,35 @@
+# Servicio auxiliar de Bluetooth.
+# Levanta un agente automático para responder autorizaciones básicas de conexión.
+
+[Unit]
+Description=Agente Bluetooth automatico
+
+# El agente requiere que el servicio Bluetooth del sistema esté activo.
+After=bluetooth.service
+Requires=bluetooth.service
+
+# Debe estar disponible antes de iniciar el servidor BLE principal.
+Before=ble-server.service
+
+[Service]
+Type=simple
+
+# yes yes entrega respuestas afirmativas al agente Bluetooth.
+# bt-agent -c NoInputNoOutput configura la Raspberry como dispositivo sin teclado/pantalla
+# para ingreso de códigos de emparejamiento.
+ExecStart=/bin/sh -c '/usr/bin/yes yes | /usr/bin/bt-agent -c NoInputNoOutput'
+
+# Si el agente se detiene, systemd intenta levantarlo nuevamente.
+Restart=always
+RestartSec=2
+
+# Asegura que los procesos hijos del pipe también se detengan al parar el servicio.
+KillMode=control-group
+TimeoutStopSec=3
+SendSIGKILL=yes
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,38 @@
+# Servicio principal del miniproyecto.
+# Ejecuta el servidor BLE UART + LCD al iniciar la Raspberry Pi.
+
+[Unit]
+Description=Servidor BLE Raspberry
+
+# El servidor depende del servicio Bluetooth del sistema y del agente automático.
+# After define orden de arranque; Requires define dependencia fuerte.
+After=bluetooth.service bt-agent-auto.service
+Requires=bluetooth.service bt-agent-auto.service
+
+[Service]
+# Type=simple es adecuado para un script Python que queda corriendo en primer plano.
+Type=simple
+
+# Espera breve para dar tiempo a que Bluetooth/I2C estén disponibles tras el arranque.
+ExecStartPre=/bin/sleep 4
+
+# Comando principal: ejecuta el script definitivo con salida sin buffer (-u).
+ExecStart=/usr/bin/python3 -u /home/raspberry/ble_server.py
+
+# Carpeta de trabajo del proceso.
+WorkingDirectory=/home/raspberry
+
+# Ejecuta el servicio con el usuario normal de la Raspberry, no como root.
+User=raspberry
+
+# Reinicia automáticamente el programa si se cae.
+Restart=always
+RestartSec=3
+
+# Envía mensajes normales y errores al journal de systemd.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+# Permite habilitar el servicio para que arranque en modo multiusuario.
+WantedBy=multi-user.target
